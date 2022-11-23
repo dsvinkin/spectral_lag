@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+plt.style.use('./dstyle1.mplstyle')
 
 def correlate(arr_1, arr_1_err, arr_2, arr_2_err, i_shift_max):
     """
@@ -102,6 +103,84 @@ def make_sim_fits(data, i_ch_low_e, i_ch_hi_e, n_shift, n_sim):
 
     return lst_ccf_sim, lst_ccf_sim_fit, lst_ccf_sim_fit_argmax
 
+
+def set_layout(fig):
+
+    # Set panel parameters
+    left = 0.10
+    top = 0.95
+    width = 0.8
+    heigt_ax = 0.28
+    
+    
+    # rect [left, bottom, width, height] 
+    
+    lst_rect = []
+    lst_rect.append([left, top - heigt_ax, width, heigt_ax])
+    lst_rect.append([left, top - 2*heigt_ax, width, heigt_ax])
+    lst_rect.append([left, top - 3*heigt_ax, width, heigt_ax])
+
+    lst_axis = []
+    for i in range(len(lst_rect)):
+        if i > 0:
+            lst_axis.append(fig.add_axes(lst_rect[i], sharex=lst_axis[0]))
+        else:
+            lst_axis.append(fig.add_axes(lst_rect[i]))
+
+        if i < len(lst_rect) - 1:
+            lst_axis[-1].tick_params(labelbottom=False)
+
+    return lst_axis
+
+def plot_lags(ax, str_label, arr_dt, arr_ccf, arr_ccf_err, lst_ccf_sim, lst_ccf_sim_fit, lst_ccf_sim_fit_argmax):
+    
+    n_sim = len(lst_ccf_sim)
+    res = 0.064
+
+    x = np.linspace(-0.5, 0.5, 20)
+    """
+    for i in range(n_sim):
+        ax.plot(arr_dt*res, lst_ccf_sim[i], c='k', alpha=0.1)
+        y = poly(x, *lst_ccf_sim_fit[i])
+        ax.plot(x, y, c='r', alpha=0.1)
+        ax.axvline(lst_ccf_sim_fit_argmax[i], 0.0, 1.5, c='r', alpha=0.1)
+    """
+    ax.errorbar(arr_dt*res, arr_ccf, yerr=arr_ccf_err, fmt='o', c='k', ) # label=str_label
+    popt, pcov, x_max = fit_ccf(arr_dt*res, arr_ccf, arr_ccf_err)
+    y = poly(x, *popt)
+    ax.plot(x, y, c='k', alpha=0.5)
+
+    x_max, err_dn, err_up = get_conf_int(lst_ccf_sim_fit_argmax, 0.68)
+    ax.axvline(x_max, 0.0, 1.5, ls='--', c='k', alpha=0.8)
+    ax.axvspan(x_max + err_dn, x_max + err_up, color='k', alpha=0.25)
+
+    #leg = ax.legend(loc='lower right', fancybox=False)
+    #for item in leg.legendHandles:
+    #    item.set_visible(False)
+
+    ax.text(-0.55, 0.45, str_label)
+
+    ax.grid()
+    ax.set_xlim(-0.6, 0.6)
+    ax.set_ylim(0.4, 1.19)
+
+def get_conf_int(arr_x, cf):
+    """Calculate confidence interval 
+
+    Args:
+        arr_x (np.array): random variable realizations
+        cf (float): confidence level
+
+    Returns:
+        [tuple]: median of arr_x, lower and upper at conf. lebvel ci
+    """   
+
+    x_ = np.median(arr_x)
+    err_dn = np.quantile(arr_x, (1-cf)/2) - x_
+    err_up = np.quantile(arr_x, (1+cf)/2) - x_
+
+    return x_, err_dn, err_up
+
 def main():
 
     
@@ -110,6 +189,8 @@ def main():
     i_end = 3785
     n_shift = 8
     res = 0.064
+
+    n_sim = 1000
     
     """
     data = np.loadtxt('GRB20211227_T84726_128ms_BAT.thr')
@@ -120,39 +201,39 @@ def main():
     """
 
     dic_chan = {'Ch21':(3,1), 'Ch32':(5,3), 'Ch31':(5,1)}
-    chan = 'Ch21'
+    dic_chan_dec = {'Ch21':'25-50 keV - 15-25 keV', 
+        'Ch32':'50-100 keV - 25-50 keV', 
+        'Ch31':'50-100 keV - 15-25 keV'}
+    lst_chan = 'Ch21 Ch32 Ch31'.split()
 
-    i_ch_low_e, i_ch_hi_e = dic_chan[chan]
- 
     data_c = data[i_beg:i_end+1,:]
-
-    arr_dt, arr_ccf, arr_ccf_err =\
-        correlate(data_c[:,i_ch_hi_e],  data_c[:,i_ch_hi_e+1], 
-                  data_c[:,i_ch_low_e], data_c[:,i_ch_low_e+1], n_shift)
-
-    n_sim = 200
-    lst_ccf_sim, lst_ccf_sim_fit, lst_ccf_sim_fit_argmax = \
-         make_sim_fits(data_c, i_ch_low_e, i_ch_hi_e, n_shift, n_sim)
-
-    x = np.linspace(-0.5, 0.5, 20)
-    for i in range(n_sim):
-        plt.plot(arr_dt*res, lst_ccf_sim[i], c='k', alpha=0.1)
-        y = poly(x, *lst_ccf_sim_fit[i])
-        plt.plot(x, y, c='r', alpha=0.1)
-        plt.axvline(lst_ccf_sim_fit_argmax[i], 0.0, 1.5, c='r', alpha=0.1)
-
-    x_max = np.median(lst_ccf_sim_fit_argmax)
-    err_dn = np.quantile(lst_ccf_sim_fit_argmax, 0.16) - x_max
-    err_up = np.quantile(lst_ccf_sim_fit_argmax, 0.84) - x_max
-    print("lag{:s}: {:8.3f} ({:+.3f}, {:+.3f})".format(chan, x_max, err_dn, err_up))
-
-    plt.errorbar(arr_dt*res, arr_ccf, yerr=arr_ccf_err, label=f'{chan}')
     
-    plt.legend()
-    plt.grid()
-    plt.xlim(-0.6,0.6)
-    plt.ylim(0.4, 1.2)
-    plt.show()
+    fig = plt.figure(figsize=(8,8))
+
+    lst_axis = set_layout(fig)
+
+    for i, chan in enumerate(lst_chan):
+
+        i_ch_low_e, i_ch_hi_e = dic_chan[chan]
+ 
+        arr_dt, arr_ccf, arr_ccf_err =\
+            correlate(data_c[:,i_ch_hi_e],  data_c[:,i_ch_hi_e+1], 
+                    data_c[:,i_ch_low_e], data_c[:,i_ch_low_e+1], n_shift)
+
+    
+        lst_ccf_sim, lst_ccf_sim_fit, lst_ccf_sim_fit_argmax = \
+                make_sim_fits(data_c, i_ch_low_e, i_ch_hi_e, n_shift, n_sim)
+
+    
+        plot_lags(lst_axis[i], dic_chan_dec[chan], arr_dt, arr_ccf, arr_ccf_err, lst_ccf_sim, lst_ccf_sim_fit, lst_ccf_sim_fit_argmax)
+
+        x_max, err_dn, err_up = get_conf_int(lst_ccf_sim_fit_argmax, 0.68)
+        print("lag{:s}: {:8.3f} ({:+.3f}, {:+.3f})".format(chan, x_max, err_dn, err_up))
+
+    lst_axis[2].set_xlabel("t$_\mathrm{lag}$ (s)")
+    lst_axis[0].set_ylim(0.4, 1.2)
+    lst_axis[1].set_ylabel("CCF")
+    fig.savefig('bat_lags.pdf')
 
 if __name__ == "__main__":
     main()
